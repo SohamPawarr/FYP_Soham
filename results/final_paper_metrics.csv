@@ -1,0 +1,9 @@
+Metric,Value
+Nodes,32661
+Edges,16426
+Communities,16251
+Homogeneity,0.9894
+High-Risk Comms,42
+Non-trivial SCCs,0
+PPR ROC-AUC,0.5000
+PPR PR-AUC,0.3356
