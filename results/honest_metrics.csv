@@ -1,7 +1,0 @@
-Metric,Value
-PPR ROC-AUC,0.5
-PPR PR-AUC,0.3334
-Communities,16251.0
-Homogeneity,0.9894
-High-Risk Communities,0.0
-Non-trivial SCCs,0.0
