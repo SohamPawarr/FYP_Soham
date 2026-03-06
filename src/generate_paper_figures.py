@@ -1,200 +1,107 @@
 import pandas as pd
 import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
-import community.community_louvain as community_louvain
 import os
-import random
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Setup paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-DATA_DIR = os.path.join(PROJECT_ROOT, "datasets")
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "results") # Images will go here or root? 
-# Paper usually expects images in same dir or specific folder. 
-# Let's save to project root where .tex likely looks, or checks assumption.
-# The tex has \includegraphics[width=\columnwidth]{pr_curve.png} -> implies current dir relative to tex.
-# User tex is in src/paper.tex, so images should be in src/
-IMG_DIR = SCRIPT_DIR 
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+LOG_FILE = os.path.join(RESULTS_DIR, "experiment_log.csv")
 
-print(f"Generating images in: {IMG_DIR}")
-
-def load_data():
-    print("Loading PaySim data...")
-    df = pd.read_csv(os.path.join(DATA_DIR, 'paysim dataset.csv'))
-    # Balanced subset as per paper methodology
-    fraud = df[df['isFraud'] == 1]
-    legit = df[df['isFraud'] == 0].sample(n=len(fraud), random_state=42)
-    balanced_df = pd.concat([fraud, legit])
-    return balanced_df
-
-def generate_density_plot(df):
-    print("Generating density_plot.png...")
-    import seaborn as sns
-    sns.set_theme(style="whitegrid")
-
-    # Re-implement logic
-    G = nx.from_pandas_edgelist(df, 'nameOrig', 'nameDest', ['amount', 'isFraud'])
-    partition = community_louvain.best_partition(G)
+def generate_winner_comparison():
+    print("\n📊 Generating Strategy Winner Comparison Graphs...")
     
-    community_counts = {}
-    community_fraud = {}
-    fraud_nodes = set(df[df['isFraud'] == 1]['nameOrig']) | set(df[df['isFraud'] == 1]['nameDest'])
-    
-    for node, comm_id in partition.items():
-        community_counts[comm_id] = community_counts.get(comm_id, 0) + 1
-        if node in fraud_nodes:
-            community_fraud[comm_id] = community_fraud.get(comm_id, 0) + 1
-            
-    densities = []
-    for comm_id in community_counts:
-        # Filter tiny communities to reduce noise
-        if community_counts[comm_id] > 2:
-            fraud_count = community_fraud.get(comm_id, 0)
-            densities.append(fraud_count / community_counts[comm_id])
+    if not os.path.exists(LOG_FILE):
+        print("   ❌ experiment_log.csv not found! Run main.py first.")
+        return
 
-    plt.figure(figsize=(10, 6))
+    df = pd.read_csv(LOG_FILE)
+    if df.empty:
+        print("   ❌ No data in experiment_log.csv")
+        return
+
+    # Clean up strategy names for the plot
+    df['Strategy_Clean'] = df['strategy'].apply(lambda x: x.split('_', 1)[1].replace('_', ' '))
+
+    # Set Seaborn theme
+    sns.set_theme(style="whitegrid", context="talk")
+
+    # 1. ROC-AUC bar chart
+    plt.figure(figsize=(14, 8))
     
-    # Histogram with KDE
-    sns.histplot(densities, bins=30, kde=True, color='#8da0cb', edgecolor='white', linewidth=1.2, alpha=0.8)
+    # Sort by ROC-AUC to highlight winner
+    df_sorted_roc = df.sort_values('roc_auc', ascending=False)
+    winner_idx = df_sorted_roc.index[0]
     
-    plt.title('Distribution of Illicit Density per Community', fontsize=16, fontweight='bold', pad=20)
-    plt.xlabel('Illicit Transaction Density (0.0 = 100% Licit, 1.0 = 100% Illicit)', fontsize=12)
-    plt.ylabel('Number of Communities', fontsize=12)
-    plt.yscale('log') # Log scale matches the original example's Y-axis (10^0 - 10^2)
+    # Choose a color palette: Winner gets distinct color
+    colors = ['#ff7f0e' if i == winner_idx else '#1f77b4' for i in range(len(df_sorted_roc))]
+    
+    ax = sns.barplot(
+        data=df_sorted_roc, 
+        x='roc_auc', 
+        y='Strategy_Clean', 
+        palette=colors,
+        edgecolor='black'
+    )
+
+    # Annotate with the exact scores
+    for i, p in enumerate(ax.patches):
+        width = p.get_width()
+        ax.annotate(f'{width:.3f}', 
+                    (width, p.get_y() + p.get_height() / 2.), 
+                    ha='right', va='center', 
+                    xytext=(-5, 0), textcoords='offset points',
+                    color='white' if i == 0 else 'black',
+                    fontweight='bold')
+
+    plt.title('Strategy Performance Breakdown (ROC-AUC)\nOrange: Winning Architecture', fontsize=18, fontweight='bold', pad=20)
+    plt.xlabel('ROC-AUC Score (Higher is Better)', fontsize=14)
+    plt.ylabel('Modeling Strategy', fontsize=14)
+    plt.xlim(0, 1.0)
     plt.tight_layout()
-    plt.savefig(os.path.join(IMG_DIR, 'density_plot.png'), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, 'winner_roc_auc_comparison.png'), dpi=300)
     plt.close()
 
-def generate_pr_curve(df):
-    print("Generating pr_curve.png (REAL CALCULATION)...")
-    from sklearn.metrics import precision_recall_curve, auc
+    # 2. Scatter Plot: Performance vs Runtime
+    plt.figure(figsize=(12, 8))
     
-    # Data Prep (Same as before)
-    G = nx.from_pandas_edgelist(df, 'nameOrig', 'nameDest', ['amount', 'isFraud'], create_using=nx.DiGraph())
-    fraud_nodes = list(set(list(df[df['isFraud'] == 1]['nameOrig']) + list(df[df['isFraud'] == 1]['nameDest'])))
-    valid_fraud_nodes = [n for n in fraud_nodes if n in G.nodes()]
+    # Using F1 Score on Y and Runtime on X
+    scatter = sns.scatterplot(
+        data=df, 
+        x='runtime_sec', 
+        y='f1', 
+        hue='Strategy_Clean',
+        s=200, 
+        palette='husl',
+        edgecolor='black',
+        linewidth=1.5
+    )
     
-    if not valid_fraud_nodes: return
+    # Add labels to points
+    for line in range(0, df.shape[0]):
+        scatter.text(
+            df.runtime_sec.iloc[line] + (df.runtime_sec.max() * 0.01), 
+            df.f1.iloc[line], 
+            df.strategy.iloc[line].split('_')[0], # Just S0, S1, etc
+            horizontalalignment='left', 
+            size='medium', color='black', weight='semibold'
+        )
 
-    random.seed(42)
-    random.shuffle(valid_fraud_nodes)
-    split_idx = int(len(valid_fraud_nodes) * 0.5)
-    seed_nodes = valid_fraud_nodes[:split_idx]
-    target_fraud_nodes = set(valid_fraud_nodes[split_idx:])
+    plt.title('Computation Cost vs. Detection Accuracy (F1-Score)', fontsize=18, fontweight='bold', pad=20)
+    plt.xlabel('Execution Time (Seconds)', fontsize=14)
+    plt.ylabel('F1-Score', fontsize=14)
+    plt.grid(True, linestyle='--', alpha=0.7)
     
-    personalization = {n: 1.0 for n in seed_nodes}
-    try:
-        ppr_scores = nx.pagerank(G, alpha=0.85, personalization=personalization, max_iter=100)
-    except: return
-
-    y_true, y_scores = [], []
-    for node in G.nodes():
-        if node in seed_nodes: continue
-        y_true.append(1 if node in target_fraud_nodes else 0)
-        y_scores.append(ppr_scores.get(node, 0))
-        
-    precision, recall, _ = precision_recall_curve(y_true, y_scores)
-    pr_auc = auc(recall, precision)
-    print(f"Calculated PR-AUC: {pr_auc:.4f}")
-
-    # --- 2. PR Curve (Black Line, Light Grey Fill) ---
-    plt.figure(figsize=(8, 6))
-    plt.style.use('default') # Reset
+    # Move legend outside
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10)
     
-    # Grid
-    plt.grid(True, linestyle='--', alpha=0.5, color='#cccccc')
-    
-    # Plot
-    plt.plot(recall, precision, color='black', linewidth=2.5, label=f'PR Curve (AUC = {pr_auc:.3f})')
-    plt.fill_between(recall, precision, color='#f0f0f0', alpha=0.5)
-    
-    plt.title('Precision-Recall Curve for PPR Risk Scoring', fontsize=16, fontweight='bold', pad=20, color='#333333')
-    plt.xlabel('Recall', fontsize=14, fontweight='bold', color='#333333')
-    plt.ylabel('Precision', fontsize=14, fontweight='bold', color='#333333')
-    
-    # Thick axes lines
-    ax = plt.gca()
-    for axis in ['top','bottom','left','right']:
-        ax.spines[axis].set_linewidth(1.5)
-        
-    plt.legend(loc='lower left', frameon=False, fontsize=12)
-    plt.xlim(-0.02, 1.02)
-    plt.ylim(-0.02, 1.05)
     plt.tight_layout()
-    plt.savefig(os.path.join(IMG_DIR, 'pr_curve.png'), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, 'runtime_vs_f1_scatter.png'), dpi=300)
     plt.close()
-
-def generate_forensic_subgraph(df):
-    print("Generating forensic_subgraph.png...")
     
-    # 1. Build Graph
-    G = nx.from_pandas_edgelist(df, 'nameOrig', 'nameDest', ['amount', 'isFraud'], create_using=nx.DiGraph())
-    
-    # 2. Find a "Star" fraudster (High out-degree)
-    fraud_sources = df[df['isFraud'] == 1]['nameOrig'].unique()
-    valid_sources = [n for n in fraud_sources if n in G.nodes()]
-    
-    if not valid_sources: return
-
-    # Sort primarily by out-degree to get a good star
-    degrees = dict(G.out_degree(valid_sources))
-    top_source = sorted(degrees, key=degrees.get, reverse=True)[0]
-    
-    # 3. Extract Subgraph (Source + Neighbors + Neighbors of Neighbors)
-    # We want ~15-25 nodes for elegance.
-    nodes_to_keep = {top_source}
-    neighbors = list(G.successors(top_source))
-    nodes_to_keep.update(neighbors[:10]) # Top 10 mules
-    
-    # Add some secondary connections if available
-    for n in list(nodes_to_keep):
-        secondary = list(G.successors(n))
-        if secondary:
-            nodes_to_keep.update(secondary[:3]) # Add a few secondary
-            
-    subgraph = G.subgraph(nodes_to_keep)
-    
-    # 4. Calculate Risk Scores (Local PPR)
-    personalization = {top_source: 1.0}
-    ppr_scores = nx.pagerank(subgraph, alpha=0.85, personalization=personalization)
-    
-    # 5. Visualization
-    pos = nx.spring_layout(subgraph, seed=42, k=0.5) # k regulates spacing
-    
-    plt.figure(figsize=(10, 8))
-    
-    nodes = list(subgraph.nodes())
-    colors = [ppr_scores.get(n, 0) for n in nodes]
-    
-    # Color Map: Viridis (Purple -> Yellow)
-    # Sizes: Source larger
-    sizes = [1500 if n == top_source else 800 for n in nodes]
-    
-    nx.draw_networkx_nodes(subgraph, pos, node_color=colors, cmap=plt.cm.viridis, node_size=sizes, alpha=0.9)
-    nx.draw_networkx_edges(subgraph, pos, edge_color='gray', width=1.5, arrowsize=15, alpha=0.6)
-    
-    # Labels (Just last 4 digits for elegance)
-    labels = {n: n[-4:] for n in nodes}
-    nx.draw_networkx_labels(subgraph, pos, labels=labels, font_size=10, font_weight='bold', font_color='white') # White text on dark nodes?
-    # Use black text for visibility on yellow
-    nx.draw_networkx_labels(subgraph, pos, labels=labels, font_size=10, font_weight='bold', font_color='black')
-    
-    # Colorbar
-    sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=plt.Normalize(vmin=min(colors), vmax=max(colors)))
-    sm.set_array([])
-    cbar = plt.colorbar(sm, ax=plt.gca(), shrink=0.8)
-    cbar.set_label('Personalized PageRank Risk (Licit \u2192 Illicit)', fontsize=12)
-    
-    plt.title('Forensic Subgraph Visualization (Colored by Risk Score)', fontsize=16, fontweight='bold', color='#333333')
-    plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(os.path.join(IMG_DIR, 'forensic_subgraph.png'), dpi=300)
-    plt.close()
+    print(f"   ✅ Saved winner_roc_auc_comparison.png and runtime_vs_f1_scatter.png to {RESULTS_DIR}")
 
 if __name__ == "__main__":
-    df = load_data()
-    generate_density_plot(df)
-    generate_pr_curve(df)
-    generate_forensic_subgraph(df)
-    print("Done.")
+    generate_winner_comparison()
