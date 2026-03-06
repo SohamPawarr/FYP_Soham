@@ -1,13 +1,11 @@
 import time
 import numpy as np
-from xgboost import XGBClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from src.graph_utils import compute_common_features, evaluate
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 4: Stacking Ensemble")
+    print("\n🔬 Strategy 1: Structural Feature Augmentation")
     t0 = time.time()
 
     train_nodes, y_train, y_test, X_train_base, X_test_base, _, _, _ = \
@@ -21,18 +19,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     X_test = scaler.transform(X_test)
 
     n_feats = X_train.shape[1]
-
-    estimators = [
-        ("rf", RandomForestClassifier(n_estimators=150, random_state=42, n_jobs=-1)),
-        ("xgb", XGBClassifier(
-            n_estimators=150, random_state=42, eval_metric="logloss",
-            use_label_encoder=False, verbosity=0, n_jobs=-1
-        )),
-        ("gb", GradientBoostingClassifier(n_estimators=100, random_state=42)),
-    ]
-    meta = LogisticRegression(random_state=42, max_iter=1000)
-
-    clf = StackingClassifier(estimators=estimators, final_estimator=meta, cv=3, n_jobs=-1)
+    clf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
     clf.fit(X_train, y_train)
     y_proba = clf.predict_proba(X_test)[:, 1]
 
@@ -42,7 +29,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S4_Stacking_Ensemble",
+        "strategy": "S01_Structural_Feature_Augmentation",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

@@ -107,7 +107,7 @@ def extract_temporal_features(df, src_col, label_col, nodes):
     return np.array(feature_matrix, dtype=float), feature_names
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 5: Temporal + Type Features Fusion")
+    print("\n🔬 Strategy 5: Spatio-Temporal Feature Fusion")
     t0 = time.time()
 
     seeds = {n: 1.0 for n in fraud_train if n in G.nodes()}
@@ -159,7 +159,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S5_Temporal_Fusion",
+        "strategy": "S05_Spatio_Temporal_Feature_Fusion",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

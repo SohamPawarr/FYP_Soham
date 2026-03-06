@@ -1,49 +1,44 @@
 import time
-import networkx as nx
 import numpy as np
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from src.graph_utils import compute_common_features, evaluate
 
+def _node2vec_embeddings(G, nodes, dimensions=64, walk_length=15, num_walks=8, p=1, q=2):
+    """Generate Node2Vec embeddings for a list of nodes."""
+    from node2vec import Node2Vec
+    G_for_n2v = G.to_undirected()
+    if G_for_n2v.number_of_nodes() == 0:
+        return np.zeros((len(nodes), dimensions))
+
+    n2v = Node2Vec(
+        G_for_n2v, dimensions=dimensions, walk_length=walk_length,
+        num_walks=num_walks, p=p, q=q, workers=1, quiet=True
+    )
+    model = n2v.fit(window=5, min_count=1, batch_words=4)
+    embeddings = []
+    for node in nodes:
+        try:
+            embeddings.append(model.wv[str(node)])
+        except KeyError:
+            embeddings.append(np.zeros(dimensions))
+    return np.array(embeddings, dtype=float)
+
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 7: Time-Weighted PPR")
+    print("\n🔬 Strategy 6: Latent Graph Embeddings (Node2Vec)")
     t0 = time.time()
 
-    train_nodes, y_train, y_test, X_train_base, X_test_base, ppr_scores, partition, comm_counts = \
+    train_nodes, y_train, y_test, X_train_base, X_test_base, _, _, _ = \
         compute_common_features(G, fraud_train, legit_nodes, test_nodes, node_labels, test_labels)
 
-    max_step = 1.0
-    if "step" in df.columns:
-        max_step = df["step"].max()
-    elif "hour_of_day" in df.columns:
-        max_step = df["hour_of_day"].max()
+    all_ordered = train_nodes + test_nodes
+    print("   Computing Node2Vec embeddings (this may take a minute)...")
+    emb_all = _node2vec_embeddings(G, all_ordered, dimensions=64, walk_length=15, num_walks=8)
+    X_train_emb = emb_all[:len(train_nodes)]
+    X_test_emb = emb_all[len(train_nodes):]
 
-    G_tw = G.copy()
-    for u, v, d in G_tw.edges(data=True):
-        w = d.get("weight", 1.0)
-        d["tw_weight"] = w * (1.0 + 0.1 * np.random.random())
-
-    seeds = {n: 1.0 for n in fraud_train if n in G_tw.nodes()}
-    ppr_tw = nx.pagerank(G_tw, personalization=seeds if seeds else None, weight="tw_weight")
-
-    legit_seeds = {n: 1.0 for n in legit_nodes[:min(500, len(legit_nodes))] if n in G_tw.nodes()}
-    ppr_reverse = nx.pagerank(G_tw, personalization=legit_seeds if legit_seeds else None, weight="tw_weight")
-
-    def tw_features(nodes):
-        feats = []
-        for node in nodes:
-            ppr_std = ppr_scores.get(node, 0)
-            ppr_t = ppr_tw.get(node, 0)
-            ppr_r = ppr_reverse.get(node, 0)
-            risk_ratio = (ppr_t + 1e-10) / (ppr_r + 1e-10)
-            feats.append([ppr_t, ppr_r, risk_ratio, ppr_t - ppr_r])
-        return np.array(feats, dtype=float)
-
-    X_train_tw = tw_features(train_nodes)
-    X_test_tw = tw_features(test_nodes)
-
-    X_train = np.hstack([X_train_base, X_train_tw])
-    X_test = np.hstack([X_test_base, X_test_tw])
+    X_train = np.hstack([X_train_base, X_train_emb])
+    X_test = np.hstack([X_test_base, X_test_emb])
 
     X_train = np.nan_to_num(X_train, nan=0, posinf=0, neginf=0)
     X_test = np.nan_to_num(X_test, nan=0, posinf=0, neginf=0)
@@ -66,7 +61,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S7_TimeWeighted_PPR",
+        "strategy": "S06_Latent_Graph_Embeddings_Node2Vec",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

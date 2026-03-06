@@ -83,18 +83,18 @@ def main():
     print(f"   Split: {len(fraud_train)} train fraud, {len(test_nodes)} test nodes")
 
     strategy_modules = [
-        "src.strategies.strategy_0",
-        "src.strategies.strategy_1",
-        "src.strategies.strategy_2",
-        "src.strategies.strategy_3",
-        "src.strategies.strategy_4",
-        "src.strategies.strategy_5",
-        "src.strategies.strategy_6",
-        "src.strategies.strategy_7",
-        "src.strategies.strategy_8",
-        "src.strategies.strategy_9",
-        "src.strategies.strategy_10",
-        "src.strategies.strategy_11",
+        "src.strategies.s00_topological_baseline",
+        "src.strategies.s01_structural_feature_augmentation",
+        "src.strategies.s02_multi_resolution_community_detection",
+        "src.strategies.s03_associative_propagated_risk_2hop",
+        "src.strategies.s04_heterogeneous_stacking_ensemble",
+        "src.strategies.s05_spatio_temporal_feature_fusion",
+        "src.strategies.s06_latent_graph_embeddings_node2vec",
+        "src.strategies.s07_chronological_risk_propagation",
+        "src.strategies.s08_higher_order_flow_motifs",
+        "src.strategies.s09_semi_supervised_identity_propagation",
+        "src.strategies.s10_composite_multi_feature_ensemble",
+        "src.strategies.s11_unified_multistage_detection_framework",
     ]
 
     # Package arguments for multiprocessing

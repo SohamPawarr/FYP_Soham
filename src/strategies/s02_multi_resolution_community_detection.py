@@ -8,7 +8,7 @@ from collections import defaultdict
 from src.graph_utils import extract_enhanced_features, evaluate
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 2: Weighted Louvain + Resolution Tuning")
+    print("\n🔬 Strategy 2: Multi-Resolution Community Detection")
     t0 = time.time()
 
     G_und = G.to_undirected()
@@ -83,7 +83,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S2_Weighted_Louvain",
+        "strategy": "S02_Multi_Resolution_Community_Detection",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

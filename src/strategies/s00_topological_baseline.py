@@ -19,7 +19,7 @@ def extract_basic_features(G, nodes):
     return np.array(features, dtype=float)
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 0: Baseline (5 features + RF)")
+    print("\n🔬 Strategy 0: Topological Baseline")
     t0 = time.time()
 
     rng = np.random.RandomState(42)
@@ -47,7 +47,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S0_Baseline",
+        "strategy": "S00_Topological_Baseline",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

@@ -3,6 +3,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.ticker import ScalarFormatter
 
 # Setup paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,7 +12,7 @@ RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
 LOG_FILE = os.path.join(RESULTS_DIR, "experiment_log.csv")
 
 def generate_winner_comparison():
-    print("\n📊 Generating Strategy Winner Comparison Graphs...")
+    print("\n📊 Generating High-Resolution Academic Figures...")
     
     if not os.path.exists(LOG_FILE):
         print("   ❌ experiment_log.csv not found! Run main.py first.")
@@ -22,86 +23,121 @@ def generate_winner_comparison():
         print("   ❌ No data in experiment_log.csv")
         return
 
-    # Clean up strategy names for the plot
-    df['Strategy_Clean'] = df['strategy'].apply(lambda x: x.split('_', 1)[1].replace('_', ' '))
+    # Standardize strategy labeling for publication
+    # Extract index (S00) and cleaned name
+    df['Strategy_ID'] = df['strategy'].apply(lambda x: x.split('_')[0])
+    df['Strategy_Name'] = df['strategy'].apply(lambda x: x.split('_', 1)[1].replace('_', ' '))
+    df['Label'] = df['Strategy_ID'] + ": " + df['Strategy_Name']
 
-    # Set Seaborn theme
-    sns.set_theme(style="whitegrid", context="talk")
+    # Set Academic Theme
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "DejaVu Serif"],
+        "axes.titlesize": 16,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 11,
+        "figure.titlesize": 18
+    })
+    sns.set_theme(style="ticks", context="paper")
 
-    # 1. ROC-AUC bar chart
+    # --- FIGURE 1: COMPREHENSIVE PERFORMANCE BAR CHART ---
+    # Metrics to compare
+    metrics = ['roc_auc', 'pr_auc', 'f1']
+    df_melted = df.melt(id_vars=['Strategy_ID', 'Strategy_Name'], value_vars=metrics, 
+                        var_name='Metric', value_name='Score')
+    
+    # Map metric names to academic labels
+    df_melted['Metric'] = df_melted['Metric'].replace({
+        'roc_auc': 'ROC-AUC', 'pr_auc': 'PR-AUC', 'f1': 'F1-Score'
+    })
+
     plt.figure(figsize=(14, 8))
-    
-    # Sort by ROC-AUC to highlight winner
-    df_sorted_roc = df.sort_values('roc_auc', ascending=False)
-    winner_idx = df_sorted_roc.index[0]
-    
-    # Choose a color palette: Winner gets distinct color
-    colors = ['#ff7f0e' if i == winner_idx else '#1f77b4' for i in range(len(df_sorted_roc))]
-    
-    ax = sns.barplot(
-        data=df_sorted_roc, 
-        x='roc_auc', 
-        y='Strategy_Clean', 
-        palette=colors,
-        edgecolor='black'
+    g = sns.barplot(
+        data=df_melted,
+        x='Strategy_ID',
+        y='Score',
+        hue='Metric',
+        palette='viridis',
+        edgecolor='0.2',
+        linewidth=0.8
     )
-
-    # Annotate with the exact scores
-    for i, p in enumerate(ax.patches):
-        width = p.get_width()
-        ax.annotate(f'{width:.3f}', 
-                    (width, p.get_y() + p.get_height() / 2.), 
-                    ha='right', va='center', 
-                    xytext=(-5, 0), textcoords='offset points',
-                    color='white' if i == 0 else 'black',
-                    fontweight='bold')
-
-    plt.title('Strategy Performance Breakdown (ROC-AUC)\nOrange: Winning Architecture', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('ROC-AUC Score (Higher is Better)', fontsize=14)
-    plt.ylabel('Modeling Strategy', fontsize=14)
-    plt.xlim(0, 1.0)
+    
+    plt.title('Performance Metric Comparison Across Detection Strategies', fontweight='bold', pad=20)
+    plt.xlabel('Strategy ID', fontweight='bold')
+    plt.ylabel('Performance Score', fontweight='bold')
+    plt.ylim(0, 1.05)
+    plt.legend(title='Metric', bbox_to_anchor=(1, 1), loc='upper left')
+    plt.grid(axis='y', linestyle='--', alpha=0.4)
+    sns.despine()
+    
     plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, 'winner_roc_auc_comparison.png'), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, 'performance_comparison_matrix.png'), dpi=400)
     plt.close()
 
-    # 2. Scatter Plot: Performance vs Runtime
+    # --- FIGURE 2: EFFICIENCY FRONTIER (AUC VS RUNTIME) ---
     plt.figure(figsize=(12, 8))
     
-    # Using F1 Score on Y and Runtime on X
+    # Use log scale for runtime to handle differences between simple vs complex models
     scatter = sns.scatterplot(
-        data=df, 
-        x='runtime_sec', 
-        y='f1', 
-        hue='Strategy_Clean',
-        s=200, 
-        palette='husl',
+        data=df,
+        x='runtime_sec',
+        y='roc_auc',
+        size='n_features',
+        hue='Strategy_Name',
+        sizes=(100, 500),
+        alpha=0.8,
+        palette='Set1',
         edgecolor='black',
-        linewidth=1.5
+        linewidth=1
     )
     
-    # Add labels to points
-    for line in range(0, df.shape[0]):
-        scatter.text(
-            df.runtime_sec.iloc[line] + (df.runtime_sec.max() * 0.01), 
-            df.f1.iloc[line], 
-            df.strategy.iloc[line].split('_')[0], # Just S0, S1, etc
-            horizontalalignment='left', 
-            size='medium', color='black', weight='semibold'
+    # Annotate points with IDs
+    for i in range(df.shape[0]):
+        plt.text(
+            df.runtime_sec.iloc[i], 
+            df.roc_auc.iloc[i] + 0.01, 
+            df.Strategy_ID.iloc[i],
+            horizontalalignment='center', 
+            size='small', weight='bold'
         )
 
-    plt.title('Computation Cost vs. Detection Accuracy (F1-Score)', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('Execution Time (Seconds)', fontsize=14)
-    plt.ylabel('F1-Score', fontsize=14)
-    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.xscale('log')
+    plt.gca().xaxis.set_major_formatter(ScalarFormatter())
     
-    # Move legend outside
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10)
+    plt.title('Efficiency Frontier: Predictive Power vs Computational Latency', fontweight='bold', pad=20)
+    plt.xlabel('Execution Runtime (seconds, log-scale)', fontweight='bold')
+    plt.ylabel('ROC-AUC Score', fontweight='bold')
+    plt.grid(True, which="both", linestyle='--', alpha=0.3)
+    plt.legend(title='Strategy Module', bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0)
+    
+    # Highlight the winner
+    winner = df.loc[df['roc_auc'].idxmax()]
+    plt.annotate('SOTA Champion', 
+                 xy=(winner.runtime_sec, winner.roc_auc),
+                 xytext=(winner.runtime_sec * 1.5, winner.roc_auc - 0.05),
+                 arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=6),
+                 fontweight='bold', color='darkred')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_DIR, 'efficiency_frontier_auc_runtime.png'), dpi=400)
+    plt.close()
+
+    # --- FIGURE 3: STRATEGY RANKING HEATMAP ---
+    pivot_df = df.set_index('Strategy_ID')[metrics].sort_values('roc_auc', ascending=False)
+    pivot_df.columns = ['ROC-AUC', 'PR-AUC', 'F1-Score']
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(pivot_df, annot=True, cmap='YlGnBu', fmt='.3f', linewidths=.5, cbar_kws={'label': 'Metric Value'})
+    plt.title('Benchmark Summary: Strategy Performance Rankings', fontweight='bold', pad=20)
+    plt.ylabel('Strategy Identifier', fontweight='bold')
     
     plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, 'runtime_vs_f1_scatter.png'), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, 'strategy_performance_heatmap.png'), dpi=400)
     plt.close()
-    
-    print(f"   ✅ Saved winner_roc_auc_comparison.png and runtime_vs_f1_scatter.png to {RESULTS_DIR}")
+
+    print(f"   ✅ Processed 3 Academic Figures in {RESULTS_DIR}")
 
 if __name__ == "__main__":
     generate_winner_comparison()

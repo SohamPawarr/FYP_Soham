@@ -1,44 +1,50 @@
 import time
+import networkx as nx
 import numpy as np
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from src.graph_utils import compute_common_features, evaluate
 
-def _node2vec_embeddings(G, nodes, dimensions=64, walk_length=15, num_walks=8, p=1, q=2):
-    """Generate Node2Vec embeddings for a list of nodes."""
-    from node2vec import Node2Vec
-    G_for_n2v = G.to_undirected()
-    if G_for_n2v.number_of_nodes() == 0:
-        return np.zeros((len(nodes), dimensions))
-
-    n2v = Node2Vec(
-        G_for_n2v, dimensions=dimensions, walk_length=walk_length,
-        num_walks=num_walks, p=p, q=q, workers=1, quiet=True
-    )
-    model = n2v.fit(window=5, min_count=1, batch_words=4)
-    embeddings = []
-    for node in nodes:
-        try:
-            embeddings.append(model.wv[str(node)])
-        except KeyError:
-            embeddings.append(np.zeros(dimensions))
-    return np.array(embeddings, dtype=float)
-
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 6: Node2Vec Embeddings")
+    print("\n🔬 Strategy 8: Higher Order Flow Motifs")
     t0 = time.time()
 
     train_nodes, y_train, y_test, X_train_base, X_test_base, _, _, _ = \
         compute_common_features(G, fraud_train, legit_nodes, test_nodes, node_labels, test_labels)
 
-    all_ordered = train_nodes + test_nodes
-    print("   Computing Node2Vec embeddings (this may take a minute)...")
-    emb_all = _node2vec_embeddings(G, all_ordered, dimensions=64, walk_length=15, num_walks=8)
-    X_train_emb = emb_all[:len(train_nodes)]
-    X_test_emb = emb_all[len(train_nodes):]
+    G_und = G.to_undirected()
+    try:
+        triangles = nx.triangles(G_und)
+    except Exception:
+        triangles = {n: 0 for n in G.nodes()}
 
-    X_train = np.hstack([X_train_base, X_train_emb])
-    X_test = np.hstack([X_test_base, X_test_emb])
+    scc_map = {}
+    for scc in nx.strongly_connected_components(G):
+        sz = len(scc)
+        for n in scc:
+            scc_map[n] = sz
+
+    def motif_features(nodes):
+        feats = []
+        for node in nodes:
+            if node not in G:
+                feats.append([0, 0, 0, 0, 0])
+                continue
+            tri = triangles.get(node, 0)
+            scc_sz = scc_map.get(node, 1)
+            preds = list(G.predecessors(node))
+            succs = list(G.successors(node))
+            two_paths = len(preds) * len(succs)
+            reciprocal = sum(1 for s in succs if G.has_edge(s, node))
+            fan_ratio = len(succs) / (len(preds) + 1e-10)
+            feats.append([tri, scc_sz, two_paths, reciprocal, fan_ratio])
+        return np.array(feats, dtype=float)
+
+    X_train_motif = motif_features(train_nodes)
+    X_test_motif = motif_features(test_nodes)
+
+    X_train = np.hstack([X_train_base, X_train_motif])
+    X_test = np.hstack([X_test_base, X_test_motif])
 
     X_train = np.nan_to_num(X_train, nan=0, posinf=0, neginf=0)
     X_test = np.nan_to_num(X_test, nan=0, posinf=0, neginf=0)
@@ -61,7 +67,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S6_Node2Vec",
+        "strategy": "S08_Higher_Order_Flow_Motifs",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

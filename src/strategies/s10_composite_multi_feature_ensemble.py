@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler
 from src.graph_utils import compute_common_features, evaluate
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 10: Kitchen Sink (All Features + Stacking)")
+    print("\n🔬 Strategy 10: Composite Multi-Feature Ensemble")
     t0 = time.time()
 
     train_nodes, y_train, y_test, X_train_base, X_test_base, ppr_scores, partition, comm_counts = \
@@ -124,7 +124,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S10_Kitchen_Sink",
+        "strategy": "S10_Composite_Multi_Feature_Ensemble",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

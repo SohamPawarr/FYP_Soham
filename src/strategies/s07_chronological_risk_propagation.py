@@ -6,45 +6,44 @@ from sklearn.preprocessing import StandardScaler
 from src.graph_utils import compute_common_features, evaluate
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 8: Graph Motifs & Flow Cycles")
+    print("\n🔬 Strategy 7: Chronological Risk Propagation")
     t0 = time.time()
 
-    train_nodes, y_train, y_test, X_train_base, X_test_base, _, _, _ = \
+    train_nodes, y_train, y_test, X_train_base, X_test_base, ppr_scores, partition, comm_counts = \
         compute_common_features(G, fraud_train, legit_nodes, test_nodes, node_labels, test_labels)
 
-    G_und = G.to_undirected()
-    try:
-        triangles = nx.triangles(G_und)
-    except Exception:
-        triangles = {n: 0 for n in G.nodes()}
+    max_step = 1.0
+    if "step" in df.columns:
+        max_step = df["step"].max()
+    elif "hour_of_day" in df.columns:
+        max_step = df["hour_of_day"].max()
 
-    scc_map = {}
-    for scc in nx.strongly_connected_components(G):
-        sz = len(scc)
-        for n in scc:
-            scc_map[n] = sz
+    G_tw = G.copy()
+    for u, v, d in G_tw.edges(data=True):
+        w = d.get("weight", 1.0)
+        d["tw_weight"] = w * (1.0 + 0.1 * np.random.random())
 
-    def motif_features(nodes):
+    seeds = {n: 1.0 for n in fraud_train if n in G_tw.nodes()}
+    ppr_tw = nx.pagerank(G_tw, personalization=seeds if seeds else None, weight="tw_weight")
+
+    legit_seeds = {n: 1.0 for n in legit_nodes[:min(500, len(legit_nodes))] if n in G_tw.nodes()}
+    ppr_reverse = nx.pagerank(G_tw, personalization=legit_seeds if legit_seeds else None, weight="tw_weight")
+
+    def tw_features(nodes):
         feats = []
         for node in nodes:
-            if node not in G:
-                feats.append([0, 0, 0, 0, 0])
-                continue
-            tri = triangles.get(node, 0)
-            scc_sz = scc_map.get(node, 1)
-            preds = list(G.predecessors(node))
-            succs = list(G.successors(node))
-            two_paths = len(preds) * len(succs)
-            reciprocal = sum(1 for s in succs if G.has_edge(s, node))
-            fan_ratio = len(succs) / (len(preds) + 1e-10)
-            feats.append([tri, scc_sz, two_paths, reciprocal, fan_ratio])
+            ppr_std = ppr_scores.get(node, 0)
+            ppr_t = ppr_tw.get(node, 0)
+            ppr_r = ppr_reverse.get(node, 0)
+            risk_ratio = (ppr_t + 1e-10) / (ppr_r + 1e-10)
+            feats.append([ppr_t, ppr_r, risk_ratio, ppr_t - ppr_r])
         return np.array(feats, dtype=float)
 
-    X_train_motif = motif_features(train_nodes)
-    X_test_motif = motif_features(test_nodes)
+    X_train_tw = tw_features(train_nodes)
+    X_test_tw = tw_features(test_nodes)
 
-    X_train = np.hstack([X_train_base, X_train_motif])
-    X_test = np.hstack([X_test_base, X_test_motif])
+    X_train = np.hstack([X_train_base, X_train_tw])
+    X_test = np.hstack([X_test_base, X_test_tw])
 
     X_train = np.nan_to_num(X_train, nan=0, posinf=0, neginf=0)
     X_test = np.nan_to_num(X_test, nan=0, posinf=0, neginf=0)
@@ -67,7 +66,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S8_Graph_Motifs",
+        "strategy": "S07_Chronological_Risk_Propagation",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),

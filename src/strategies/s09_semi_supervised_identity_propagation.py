@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 from src.graph_utils import compute_common_features, evaluate
 
 def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, dataset_name, src_col, label_col):
-    print("\n🔬 Strategy 9: Label Propagation Features")
+    print("\n🔬 Strategy 9: Semi-Supervised Identity Propagation")
     t0 = time.time()
 
     train_nodes, y_train, y_test, X_train_base, X_test_base, _, _, _ = \
@@ -77,7 +77,7 @@ def run(G, df, node_labels, fraud_train, legit_nodes, test_nodes, test_labels, d
     print(f"   ✅ ROC-AUC={metrics['roc_auc']:.4f}  PR-AUC={metrics['pr_auc']:.4f}  F1={metrics['f1']:.4f}  ({runtime:.1f}s)")
     
     return {
-        "strategy": "S9_Label_Propagation",
+        "strategy": "S09_Semi_Supervised_Identity_Propagation",
         "dataset": dataset_name,
         "roc_auc": metrics.get("roc_auc", 0),
         "pr_auc": metrics.get("pr_auc", 0),
