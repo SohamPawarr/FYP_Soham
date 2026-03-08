@@ -22,13 +22,14 @@ Through empirical benchmarking against 10 other architectural designs, our **Uni
 ### Architecture Topology
 
 ```mermaid
-graph TD
-    classDef nodeData fill:#252525,stroke:#fff,stroke-width:2px,color:#fff
-    classDef extract fill:#0d47a1,stroke:#fff,stroke-width:2px,color:#fff
-    classDef model fill:#1b5e20,stroke:#fff,stroke-width:2px,color:#fff
-    classDef output fill:#b71c1c,stroke:#fff,stroke-width:2px,color:#fff
+graph LR
+    classDef input fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
+    classDef extract fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+    classDef integrate fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
+    classDef model fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef output fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
 
-    A[Raw Elliptic Bitcoin Transactions]:::nodeData --> B{Graph Construction}:::extract
+    A[Raw Elliptic Bitcoin Transactions]:::input --> B{Graph Construction}:::extract
     
     B --> C[Structural Heuristics]:::extract
     C --> C1(Degree, In/Out-Flow, Reciprocity)
@@ -45,7 +46,7 @@ graph TD
     F --> F2(Semi-Supervised Label Propagation)
     F --> F3(HITS Hub & Authority Vectorization)
     
-    C1 --> G[[Unified Feature Integration Layer]]:::model
+    C1 --> G[[Unified Feature Integration Layer]]:::integrate
     D1 --> G
     D2 --> G
     E1 --> G
