@@ -73,6 +73,44 @@ graph LR
 3. **Risk propagation (C-PPR & LP):** Utilizes seeds of known illicit entities to run a Modified Chronological Personalized PageRank. It calculates "risk-by-association" across multiple hops.
 4. **Stacking Ensemble:** A Logistic Regression meta-classifier handles the final decision boundary, optimally weighting sub-predictions from XGBoost, Gradient Boosters, and Random Forests.
 
+### The 25 Features in S11
+
+The S11 strategy concatenates 25 features (not averaged) into a single vector per node:
+
+| # | Feature | Source |
+|---|---------|-------|
+| 1 | `total_deg` | degree |
+| 2 | `in_deg` | degree |
+| 3 | `out_deg` | degree |
+| 4 | `in_flow` | degree |
+| 5 | `out_flow` | degree |
+| 6 | `flow_imbalance` | computed |
+| 7 | `tx_count` | degree |
+| 8 | `ppr_scores` | PageRank (fraud-seeded) |
+| 9 | `comm_sizes` | Louvain |
+| 10 | `clustering` | clustering coeff |
+| 11 | `hub_scores` | HITS |
+| 12 | `auth_scores` | HITS |
+| 13 | `avg_neighbor_deg` | avg neighbor degree |
+| 14 | `scc_flags` | Tarjan SCC |
+| 15 | `out_flow / in_flow` | flow ratio |
+| 16 | `tri` | triangles (S08) |
+| 17 | `scc_sizes` | Tarjan SCC |
+| 18 | `two_paths` | S08 motifs |
+| 19 | `reciprocity` | S08 motifs |
+| 20 | `s` | label propagation |
+| 21 | `np.mean(nb_scores)` | label propagation |
+| 22 | `np.max(nb_scores)` | label propagation |
+| 23 | `pt` | time-weighted PPR (fraud) |
+| 24 | `pr` | time-weighted PPR (legit) |
+| 25 | `pt / pr` | risk ratio |
+
+**Combination Mechanism:**
+1. Features are **concatenated** → 25-dim vector per node
+2. StandardScaler normalizes each dimension
+3. All 25 features fed to stacking ensemble (RF + XGB + GB)
+4. LogisticRegression meta-learner learns optimal combination weights
+
 ## Experimental Framework & Comparison Benchmarks
 
 The framework executes 12 distinct isolated methodologies in parallel (using `multiprocessing`) to evaluate their relative effectiveness on Bitcoin transaction networks. Results are output to the `./results` directory.
